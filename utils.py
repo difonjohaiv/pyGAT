@@ -22,14 +22,16 @@ def load_data(path="./data/cora/", dataset="cora"):
 
     # build graph
     idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
-    idx_map = {j: i for i, j in enumerate(idx)}
+    idx_map = {j: i for i, j in enumerate(idx)}     # 构建词典
     edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
     edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
+    # 建立邻接矩阵
     adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
 
-    # build symmetric adjacency matrix
+    # build symmetric adjacency matrix。构建对称矩阵
     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
 
+    # 对特征和邻接矩阵进行归一化
     features = normalize_features(features)
     adj = normalize_adj(adj + sp.eye(adj.shape[0]))
 
@@ -37,6 +39,7 @@ def load_data(path="./data/cora/", dataset="cora"):
     idx_val = range(200, 500)
     idx_test = range(500, 1500)
 
+    # 把邻接矩阵、特征、标签转换为张量
     adj = torch.FloatTensor(np.array(adj.todense()))
     features = torch.FloatTensor(np.array(features.todense()))
     labels = torch.LongTensor(np.where(labels)[1])
@@ -72,4 +75,3 @@ def accuracy(output, labels):
     correct = preds.eq(labels).double()
     correct = correct.sum()
     return correct / len(labels)
-

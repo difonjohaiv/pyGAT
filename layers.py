@@ -1,4 +1,4 @@
-import numpy as np
+# import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +8,7 @@ class GraphAttentionLayer(nn.Module):
     """
     Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
+
     def __init__(self, in_features, out_features, dropout, alpha, concat=True):
         super(GraphAttentionLayer, self).__init__()
         self.dropout = dropout
@@ -18,20 +19,24 @@ class GraphAttentionLayer(nn.Module):
 
         self.W = nn.Parameter(torch.empty(size=(in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
-        self.a = nn.Parameter(torch.empty(size=(2*out_features, 1)))
+        self.a = nn.Parameter(torch.empty(size=(2 * out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
         self.leakyrelu = nn.LeakyReLU(self.alpha)
 
     def forward(self, h, adj):
-        Wh = torch.mm(h, self.W) # h.shape: (N, in_features), Wh.shape: (N, out_features)
-        e = self._prepare_attentional_mechanism_input(Wh)
+        Wh = torch.mm(
+            h,
+            self.W)  # h.shape: (N, in_features), Wh.shape: (N, out_features)
+        e = self._prepare_attentional_mechanism_input(
+            Wh)  # 此处是计算每一个节点与剩下所有节点的attention系数
 
-        zero_vec = -9e15*torch.ones_like(e)
-        attention = torch.where(adj > 0, e, zero_vec)
-        attention = F.softmax(attention, dim=1)
+        # 之前计算的是一个节点和所有节点的attention，其实需要的是连接节点的attention系数
+        zero_vec = -9e15 * torch.ones_like(e)  # 建立一个无穷小的矩阵
+        attention = torch.where(adj > 0, e, zero_vec)  # 将邻接矩阵中小于0的变成负无穷attention
+        attention = F.softmax(attention, dim=1)  # 按行求softmax
         attention = F.dropout(attention, self.dropout, training=self.training)
-        h_prime = torch.matmul(attention, Wh)
+        h_prime = torch.matmul(attention, Wh)  # 聚合邻居函数
 
         if self.concat:
             return F.elu(h_prime)
@@ -50,14 +55,16 @@ class GraphAttentionLayer(nn.Module):
         return self.leakyrelu(e)
 
     def __repr__(self):
-        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+        return self.__class__.__name__ + ' (' + str(
+            self.in_features) + ' -> ' + str(self.out_features) + ')'
 
 
 class SpecialSpmmFunction(torch.autograd.Function):
     """Special function for only sparse region backpropataion layer."""
+
     @staticmethod
     def forward(ctx, indices, values, shape, b):
-        assert indices.requires_grad == False
+        assert indices.requires_grad is False
         a = torch.sparse_coo_tensor(indices, values, shape)
         ctx.save_for_backward(a, b)
         ctx.N = shape[0]
@@ -77,10 +84,11 @@ class SpecialSpmmFunction(torch.autograd.Function):
 
 
 class SpecialSpmm(nn.Module):
+
     def forward(self, indices, values, shape, b):
         return SpecialSpmmFunction.apply(indices, values, shape, b)
 
-    
+
 class SpGraphAttentionLayer(nn.Module):
     """
     Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
@@ -95,8 +103,8 @@ class SpGraphAttentionLayer(nn.Module):
 
         self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
         nn.init.xavier_normal_(self.W.data, gain=1.414)
-                
-        self.a = nn.Parameter(torch.zeros(size=(1, 2*out_features)))
+
+        self.a = nn.Parameter(torch.zeros(size=(1, 2 * out_features)))
         nn.init.xavier_normal_(self.a.data, gain=1.414)
 
         self.dropout = nn.Dropout(dropout)
@@ -121,7 +129,8 @@ class SpGraphAttentionLayer(nn.Module):
         assert not torch.isnan(edge_e).any()
         # edge_e: E
 
-        e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
+        e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]),
+                                     torch.ones(size=(N, 1), device=dv))
         # e_rowsum: N x 1
 
         edge_e = self.dropout(edge_e)
@@ -130,7 +139,7 @@ class SpGraphAttentionLayer(nn.Module):
         h_prime = self.special_spmm(edge, edge_e, torch.Size([N, N]), h)
         assert not torch.isnan(h_prime).any()
         # h_prime: N x out
-        
+
         h_prime = h_prime.div(e_rowsum)
         # h_prime: N x out
         assert not torch.isnan(h_prime).any()
@@ -143,4 +152,5 @@ class SpGraphAttentionLayer(nn.Module):
             return h_prime
 
     def __repr__(self):
-        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+        return self.__class__.__name__ + ' (' + str(
+            self.in_features) + ' -> ' + str(self.out_features) + ')'
