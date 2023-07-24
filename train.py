@@ -150,6 +150,7 @@ loss_values = []
 bad_counter = 0
 best = args.epochs + 1
 best_epoch = 0
+
 for epoch in range(args.epochs):
     loss_values.append(train(epoch))
 
